@@ -51,6 +51,7 @@ mail = Mail(app)
 
 # ---------------- ملفات التوقيع ----------------
 UPLOAD_REL = os.path.join("static", "uploads", "signatures")
+MAX_SIG_BYTES = 1 * 1024 * 1024  # 1MB limit before decoding
 os.makedirs(os.path.join(app.root_path, UPLOAD_REL), exist_ok=True)
 
 # ---------------- هوية العلامة ----------------
@@ -104,13 +105,20 @@ def _save_signature_base64(data_url: str):
     يستقبل data:image/png;base64,.... ويعيد المسار النسبي داخل static/uploads/signatures
     (تم الإبقاء عليه لو رجعنا التوقيع لاحقًا؛ حاليًا التوقيع مُلغى حسب طلبك)
     """
-    if not data_url or not data_url.startswith("data:image"):
+    if not data_url or not data_url.startswith("data:"):
         return None
     try:
         header, b64 = data_url.split(",", 1)
-        raw = base64.b64decode(b64)
+    except ValueError:
+        return None
+    if header.lower() != "data:image/png;base64":
+        return None
+    if len(b64) > MAX_SIG_BYTES:
+        return None
+    try:
+        raw = base64.b64decode(b64, validate=True)
         fname = f"sig_{uuid.uuid4().hex[:12]}.png"
-        rel_path = os.path.join(UPLOAD_REL, fname)
+        rel_path = os.path.join(UPLOAD_REL, secure_filename(fname))
         abs_path = os.path.join(app.root_path, rel_path)
         with open(abs_path, "wb") as f:
             f.write(raw)
